@@ -3,112 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Afinador de Ressonador Ultrassônico</title>
+    <title>Radar Acústico de Precisão</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
-        canvas { width: 100%; height: 300px; background: #000; border: 1px solid #333; margin-top: 20px; }
-        .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 25px; font-size: 16px; cursor: pointer; border-radius: 8px; border: none; background: #007bff; color: white; }
-        button:disabled { background: #444; }
-        .info { font-size: 1.2em; color: #00ff00; margin: 10px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0a0a; color: #e0e0e0; text-align: center; padding: 10px; margin: 0; }
+        .container { max-width: 800px; margin: auto; background: #1a1a1a; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { color: #00d4ff; margin-bottom: 5px; font-size: 1.5rem; }
+        canvas { width: 100%; height: 350px; background: #000; border: 2px solid #333; border-radius: 5px; cursor: crosshair; }
+        .controls { display: flex; justify-content: center; gap: 15px; margin: 20px 0; }
+        button { padding: 12px 25px; font-size: 1rem; font-weight: bold; cursor: pointer; border-radius: 30px; border: none; transition: 0.3s; }
+        #startBtn { background: #00c853; color: white; }
+        #startBtn:hover { background: #00e676; transform: scale(1.05); }
+        #stopBtn { background: #ff1744; color: white; }
+        #stopBtn:disabled { background: #444; cursor: not-allowed; }
+        .status-box { background: #222; padding: 15px; border-radius: 10px; border-left: 5px solid #00d4ff; margin-bottom: 10px; }
+        .info { font-size: 1.4rem; font-weight: bold; color: #00d4ff; font-family: monospace; }
+        p { font-size: 0.9rem; color: #888; }
     </style>
 </head>
 <body>
 
-    <h1>Afinador Acústico IA v0.1a</h1>
-    <p>Use para calibrar seu tubinho de caneta (17kHz - 22kHz)</p>
+<div class="container">
+    <h1>Radar de Ressonância Ultrassônica v0.1b</h1>
+    <p>Faixa de Varredura: 15kHz a 23kHz</p>
 
-    <div class="controls">
-        <button id="startBtn">Iniciar Calibração</button>
-        <button id="stopBtn" disabled>Parar</button>
+    <div class="status-box">
+        <div class="info" id="freqLabel">SISTEMA OFFLINE</div>
     </div>
 
-    <div class="info" id="freqLabel">Frequência Atual: -- Hz</div>
+    <div class="controls">
+        <button id="startBtn">INICIAR RADAR</button>
+        <button id="stopBtn" disabled>PARAR</button>
+    </div>
+
     <canvas id="visualizer"></canvas>
+    <p>Dica: Aproxime o tubinho do microfone enquanto a varredura acontece.</p>
+</div>
 
-    <script>
-        let audioCtx, analyser, generator, micSource;
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const freqLabel = document.getElementById('freqLabel');
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
+<script>
+    let audioCtx, analyser, generator, micSource;
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const freqLabel = document.getElementById('freqLabel');
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
 
-        startBtn.onclick = async () => {
+    const MIN_FREQ = 15000;
+    const MAX_FREQ = 23000;
+
+    startBtn.onclick = async () => {
+        try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // 1. Configurar Microfone
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
             micSource = audioCtx.createMediaStreamSource(stream);
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 16384; // Alta resolução para frequências altas
+            analyser.fftSize = 16384; 
             micSource.connect(analyser);
 
-            // 2. Configurar Gerador de Chirp (Varredura)
             generator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            gainNode.gain.value = 0.5; // Volume médio-alto
+            gainNode.gain.value = 0.6; 
 
             generator.type = 'sine';
-            // Faz a varredura automática de 17k a 22k a cada 2 segundos
-            const now = audioCtx.currentTime;
-            generator.frequency.setValueAtTime(17000, now);
-            
-            // Loop infinito de varredura
-            setInterval(() => {
-                const t = audioCtx.currentTime;
-                generator.frequency.exponentialRampToValueAtTime(22000, t + 2);
-                generator.frequency.setValueAtTime(17000, t + 2.01);
-            }, 2000);
-
             generator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             generator.start();
 
+            function updateSweep() {
+                if (!audioCtx) return;
+                const t = audioCtx.currentTime;
+                const duration = 3; // Varredura mais lenta (3s) para melhor precisão
+                generator.frequency.setValueAtTime(MIN_FREQ, t);
+                generator.frequency.linearRampToValueAtTime(MAX_FREQ, t + duration);
+                setTimeout(updateSweep, duration * 1000);
+            }
+
+            updateSweep();
             startBtn.disabled = true;
             stopBtn.disabled = false;
             draw();
-        };
-
-        stopBtn.onclick = () => {
-            audioCtx.close();
-            location.reload();
-        };
-
-        function draw() {
-            requestAnimationFrame(draw);
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray);
-
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const sampleRate = audioCtx.sampleRate;
-            const barWidth = (canvas.width / bufferLength) * 10;
-            let x = 0;
-
-            // Focando apenas na parte alta do espectro (acima de 15kHz)
-            for (let i = 0; i < bufferLength; i++) {
-                const frequency = i * sampleRate / (analyser.fftSize);
-                
-                if (frequency > 10000 && frequency < 23000) {
-                    const barHeight = dataArray[i];
-                    
-                    // Cor muda se detectar um pico alto
-                    ctx.fillStyle = `rgb(${barHeight + 100}, 50, 255)`;
-                    if (barHeight > 200) ctx.fillStyle = '#00ff00'; 
-
-                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-                    x += barWidth + 1;
-
-                    // Mostrar frequência aproximada do pico no topo
-                    if (barHeight > 220) {
-                        freqLabel.innerText = `Ressonância Detectada: ${Math.round(frequency)} Hz`;
-                    }
-                }
-            }
+        } catch (err) {
+            alert("Erro ao acessar microfone: " + err);
         }
-    </script>
+    };
+
+    stopBtn.onclick = () => {
+        location.reload();
+    };
+
+    function draw() {
+        if (!analyser) return;
+        requestAnimationFrame(draw);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
+
+        // Limpa o canvas
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const sampleRate = audioCtx.sampleRate;
+        let maxVal = 0;
+        let maxFreq = 0;
+
+        // Configurações de desenho
+        const startBin = Math.floor(MIN_FREQ * analyser.fftSize / sampleRate);
+        const endBin = Math.floor(MAX_FREQ * analyser.fftSize / sampleRate);
+        const visibleBins = endBin - startBin;
+        const barWidth = canvas.width / visibleBins;
+
+        // 1. Desenhar Grade e Legendas (Frequências)
+        ctx.strokeStyle = '#333';
+        ctx.fillStyle = '#888';
+        ctx.font = '12px Arial';
+        for (let f = MIN_FREQ; f <= MAX_FREQ; f += 1000) {
+            let x = ((f - MIN_FREQ) / (MAX_FREQ - MIN_FREQ)) * canvas.width;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height - 20);
+            ctx.stroke();
+            ctx.fillText((f/1000).toFixed(1) + "k", x - 10, canvas.height - 5);
+        }
+
+        // 2. Desenhar as Barras de Áudio
+        for (let i = 0; i < visibleBins; i++) {
+            const binIndex = startBin + i;
+            const barHeight = (dataArray[binIndex] / 255) * (canvas.height - 40);
+            const freq = (binIndex * sampleRate) / analyser.fftSize;
+            const x = (i / visibleBins) * canvas.width;
+
+            // Lógica de Cor (Verde para picos, Azul para base)
+            if (dataArray[binIndex] > 200) {
+                ctx.fillStyle = '#00ff00'; // Ressonância forte detectada
+                if (dataArray[binIndex] > maxVal) {
+                    maxVal = dataArray[binIndex];
+                    maxFreq = freq;
+                }
+            } else {
+                ctx.fillStyle = `rgb(0, ${dataArray[binIndex] + 50}, 255)`;
+            }
+
+            ctx.fillRect(x, canvas.height - 25 - barHeight, barWidth + 1, barHeight);
+        }
+
+        // 3. Atualizar Label de Status
+        if (maxVal > 200) {
+            freqLabel.innerText = `RESSONÂNCIA: ${Math.round(maxFreq)} Hz`;
+            freqLabel.style.color = "#00ff00";
+        } else {
+            // Mostra a varredura atual se não houver ressonância forte
+            const currentOscFreq = generator.frequency.value;
+            freqLabel.innerText = `SCANNING: ${Math.round(currentOscFreq)} Hz`;
+            freqLabel.style.color = "#00d4ff";
+        }
+    }
+</script>
 </body>
 </html>
