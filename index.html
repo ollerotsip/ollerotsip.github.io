@@ -3,111 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laboratório Acústico - Teste de Hardware</title>
+    <title>Console de Engenharia Acústica</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; text-align: center; padding: 10px; margin: 0; }
-        .container { max-width: 850px; margin: auto; background: #1a1a1a; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h1 { color: #00d4ff; font-size: 1.5rem; margin-bottom: 5px; }
-        canvas { width: 100%; height: 300px; background: #000; border: 2px solid #333; border-radius: 5px; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-        .manual-control { background: #222; padding: 15px; border-radius: 10px; margin-top: 10px; border: 1px solid #444; }
-        input[type=range] { width: 80%; cursor: pointer; }
-        button { padding: 12px; font-size: 0.9rem; font-weight: bold; cursor: pointer; border-radius: 8px; border: none; transition: 0.2s; color: white; }
-        .emit-btn { background: #d500f9; }
-        .listen-btn { background: #00b0ff; }
-        #stopBtn { background: #ff1744; grid-column: span 2; }
-        .status-box { background: #222; padding: 15px; border-radius: 10px; border-left: 5px solid #00d4ff; margin-bottom: 15px; }
-        .info { font-size: 1.3rem; font-weight: bold; color: #00d4ff; font-family: monospace; }
-        .label-val { font-size: 1.1rem; color: #d500f9; font-weight: bold; }
+        body { font-family: 'Consolas', monospace; background: #050505; color: #00ff00; text-align: center; padding: 10px; margin: 0; }
+        .container { max-width: 900px; margin: auto; background: #111; padding: 20px; border-radius: 10px; border: 1px solid #00ff00; }
+        h1 { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; }
+        canvas { width: 100%; height: 300px; background: #000; border: 1px solid #333; margin: 10px 0; }
+        .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: left; font-size: 0.8rem; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        input[type=range] { width: 100%; accent-color: #00ff00; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 15px 0; }
+        button { padding: 12px; font-weight: bold; cursor: pointer; border: 1px solid #00ff00; background: transparent; color: #00ff00; text-transform: uppercase; }
+        button:hover { background: #00ff00; color: #000; }
+        button:disabled { border-color: #444; color: #444; cursor: not-allowed; }
+        .status { font-size: 1.1rem; padding: 10px; border: 1px solid #333; margin-bottom: 10px; min-height: 1.5em; }
+        label { display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Diagnóstico de Ressonância</h1>
+    <h1>Acoustic Analyzer v5.0</h1>
     
-    <div class="status-box">
-        <div id="modeLabel" style="font-size: 0.8rem; color: #aaa;">AGUARDANDO...</div>
-        <div class="info" id="freqLabel">OFFLINE</div>
+    <div class="status" id="statusDisplay">SISTEMA PRONTO</div>
+
+    <div class="panel">
+        <div class="control-group">
+            <label><span>Min Freq:</span> <span id="minVal">10000</span> Hz</label>
+            <input type="range" id="minFreq" min="1000" max="22000" step="100" value="12000">
+            
+            <label><span>Max Freq:</span> <span id="maxVal">16000</span> Hz</label>
+            <input type="range" id="maxFreq" min="2000" max="24000" step="100" value="16000">
+        </div>
+        <div class="control-group">
+            <label><span>Varredura:</span> <span id="durVal">3.0</span>s</label>
+            <input type="range" id="duration" min="0.5" max="10" step="0.5" value="3">
+
+            <label><span>Resolução (FFT):</span> <span id="fftVal">8192</span></label>
+            <input type="range" id="fftSize" min="11" max="14" step="1" value="13">
+        </div>
     </div>
 
-    <div class="controls">
-        <button id="emitBtn" class="emit-btn">MODO: EMISSOR</button>
-        <button id="listenBtn" class="listen-btn">MODO: RECEPTOR</button>
-        <button id="stopBtn" disabled>PARAR / RESETAR</button>
+    <div class="btn-grid">
+        <button id="emitBtn">Emitir</button>
+        <button id="listenBtn">Ouvir</button>
+        <button id="fullBtn">Full Duplex</button>
     </div>
-
-    <div class="manual-control">
-        <label>Frequência Manual: <span id="manualVal" class="label-val">19000</span> Hz</label><br><br>
-        <input type="range" id="freqSlider" min="15000" max="23000" step="10" value="19000">
-        <p style="font-size: 0.7rem; color: #777;">Ajuste o slider para testar pontos cegos do microfone/alto-falante.</p>
-    </div>
+    <button id="stopBtn" style="width: 100%; border-color: #ff0000; color: #ff0000;" disabled>STOP / RESET</button>
 
     <canvas id="visualizer"></canvas>
 </div>
 
 <script>
     let audioCtx, analyser, generator, micSource, animationId;
-    const freqLabel = document.getElementById('freqLabel');
-    const modeLabel = document.getElementById('modeLabel');
-    const manualVal = document.getElementById('manualVal');
-    const freqSlider = document.getElementById('freqSlider');
     const canvas = document.getElementById('visualizer');
     const ctx = canvas.getContext('2d');
-    
-    const MIN_FREQ = 15000;
-    const MAX_FREQ = 23000;
+    const statusDisplay = document.getElementById('statusDisplay');
+
+    // UI Updates
+    const updateUI = () => {
+        document.getElementById('minVal').innerText = document.getElementById('minFreq').value;
+        document.getElementById('maxVal').innerText = document.getElementById('maxFreq').value;
+        document.getElementById('durVal').innerText = document.getElementById('duration').value;
+        document.getElementById('fftVal').innerText = Math.pow(2, document.getElementById('fftSize').value);
+    };
+    document.querySelectorAll('input').forEach(i => i.oninput = updateUI);
+    updateUI();
 
     async function initAudio() {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
+        document.querySelectorAll('button').forEach(b => b.disabled = true);
         document.getElementById('stopBtn').disabled = false;
-        document.getElementById('emitBtn').disabled = true;
-        document.getElementById('listenBtn').disabled = true;
     }
 
-    freqSlider.oninput = () => {
-        manualVal.innerText = freqSlider.value;
-        if (generator) {
-            generator.frequency.setTargetAtTime(freqSlider.value, audioCtx.currentTime, 0.05);
-        }
-    };
+    const startEmission = () => {
+        const minF = parseFloat(document.getElementById('minFreq').value);
+        const maxF = parseFloat(document.getElementById('maxFreq').value);
+        const dur = parseFloat(document.getElementById('duration').value);
 
-    // MODO EMISSOR (Frequência Fixa/Manual)
-    document.getElementById('emitBtn').onclick = async () => {
-        await initAudio();
-        modeLabel.innerText = "MODO: EMISSOR (FIXO)";
         generator = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.7;
+        gainNode.gain.value = 0.5;
         generator.type = 'sine';
-        generator.frequency.value = freqSlider.value;
         generator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
         generator.start();
-        
-        setInterval(() => {
-            freqLabel.innerText = `EMITINDO: ${Math.round(generator.frequency.value)} Hz`;
-        }, 100);
+
+        const loop = () => {
+            if (!generator) return;
+            const t = audioCtx.currentTime;
+            generator.frequency.setValueAtTime(minF, t);
+            generator.frequency.linearRampToValueAtTime(maxF, t + dur);
+            setTimeout(loop, dur * 1000);
+        };
+        loop();
     };
 
-    // MODO RECEPTOR
-    document.getElementById('listenBtn').onclick = async () => {
-        await initAudio();
-        modeLabel.innerText = "MODO: RECEPTOR (ESCUTANDO)";
+    const startListening = async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         micSource = audioCtx.createMediaStreamSource(stream);
         analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 8192; // Reduzido para resposta mais rápida (peteleo)
+        analyser.fftSize = Math.pow(2, document.getElementById('fftSize').value);
         micSource.connect(analyser);
         draw();
     };
 
+    document.getElementById('emitBtn').onclick = async () => { await initAudio(); startEmission(); statusDisplay.innerText = "MODO: EMISSOR ATIVO"; };
+    document.getElementById('listenBtn').onclick = async () => { await initAudio(); await startListening(); statusDisplay.innerText = "MODO: RECEPTOR ATIVO"; };
+    document.getElementById('fullBtn').onclick = async () => { await initAudio(); startEmission(); await startListening(); statusDisplay.innerText = "MODO: FULL DUPLEX"; };
     document.getElementById('stopBtn').onclick = () => location.reload();
 
     function draw() {
         if (!analyser) return;
-        requestAnimationFrame(draw);
+        animationId = requestAnimationFrame(draw);
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         analyser.getByteFrequencyData(dataArray);
@@ -116,43 +125,47 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         const sampleRate = audioCtx.sampleRate;
-        const startBin = Math.floor(MIN_FREQ * analyser.fftSize / sampleRate);
-        const endBin = Math.floor(MAX_FREQ * analyser.fftSize / sampleRate);
+        const minF = parseFloat(document.getElementById('minFreq').value);
+        const maxF = parseFloat(document.getElementById('maxFreq').value);
+
+        const startBin = Math.floor(minF * analyser.fftSize / sampleRate);
+        const endBin = Math.floor(maxF * analyser.fftSize / sampleRate);
         const visibleBins = endBin - startBin;
         const barWidth = canvas.width / visibleBins;
 
-        // Desenhar Grade de Frequência
-        ctx.strokeStyle = '#333';
-        ctx.fillStyle = '#666';
-        ctx.font = '10px Arial';
-        for (let f = MIN_FREQ; f <= MAX_FREQ; f += 1000) {
-            let x = ((f - MIN_FREQ) / (MAX_FREQ - MIN_FREQ)) * canvas.width;
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height - 20); ctx.stroke();
-            ctx.fillText((f/1000).toFixed(1) + "k", x - 10, canvas.height - 5);
+        // Grid e Legendas
+        ctx.strokeStyle = '#222';
+        ctx.fillStyle = '#555';
+        ctx.font = '10px monospace';
+        const step = (maxF - minF) / 5;
+        for (let i = 0; i <= 5; i++) {
+            const freq = minF + (step * i);
+            const x = (i / 5) * canvas.width;
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            ctx.fillText(Math.round(freq) + "Hz", x + 2, canvas.height - 5);
         }
 
-        let maxVal = 0, maxFreq = 0;
+        let maxH = 0, peakF = 0;
         for (let i = 0; i < visibleBins; i++) {
             const binIndex = startBin + i;
-            const freq = (binIndex * sampleRate) / analyser.fftSize;
-            const barHeight = (dataArray[binIndex] / 255) * (canvas.height - 40);
+            const barHeight = (dataArray[binIndex] / 255) * (canvas.height - 20);
             const x = (i / visibleBins) * canvas.width;
 
-            if (dataArray[binIndex] > 150) {
-                ctx.fillStyle = '#00ff00';
-                if (dataArray[binIndex] > maxVal) { maxVal = dataArray[binIndex]; maxFreq = freq; }
+            if (dataArray[binIndex] > 180) {
+                ctx.fillStyle = '#ff00ff';
+                if (dataArray[binIndex] > maxH) { maxH = dataArray[binIndex]; peakF = (binIndex * sampleRate) / analyser.fftSize; }
             } else {
-                ctx.fillStyle = `rgb(0, ${dataArray[binIndex] + 30}, 150)`;
+                ctx.fillStyle = '#00ff00';
             }
-            ctx.fillRect(x, canvas.height - 25 - barHeight, barWidth + 1, barHeight);
+            ctx.fillRect(x, canvas.height - 20 - barHeight, barWidth + 1, barHeight);
         }
 
-        if (maxVal > 150) {
-            freqLabel.innerText = `PICO: ${Math.round(maxFreq)} Hz`;
-            freqLabel.style.color = "#00ff00";
-        } else {
-            freqLabel.innerText = "SILÊNCIO...";
-            freqLabel.style.color = "#888";
+        if (maxH > 180) {
+            statusDisplay.innerText = `RESSONÂNCIA EM: ${Math.round(peakF)} Hz`;
+            statusDisplay.style.color = "#ff00ff";
+        } else if (generator) {
+            statusDisplay.innerText = `SCANNING: ${Math.round(generator.frequency.value)} Hz`;
+            statusDisplay.style.color = "#00ff00";
         }
     }
 </script>
