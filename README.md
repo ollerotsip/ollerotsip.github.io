@@ -92,7 +92,7 @@
             for (let i = 0; i < bufferLength; i++) {
                 const frequency = i * sampleRate / (analyser.fftSize);
                 
-                if (frequency > 15000 && frequency < 23000) {
+                if (frequency > 1000 && frequency < 23000) {
                     const barHeight = dataArray[i];
                     
                     // Cor muda se detectar um pico alto
